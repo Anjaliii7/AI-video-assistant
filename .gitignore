@@ -1,0 +1,19 @@
+# Virtual environment
+.venv/
+
+# Environment variables
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Downloaded files
+downloads/
+downloades/
+
+# Vector database (if generated at runtime)
+vector_db/
+
+# VS Code
+.vscode/
