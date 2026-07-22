@@ -5,11 +5,15 @@ import os
 DOWNLOAD_DIR = 'downloads'
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+# Local Windows dev machine only — on Streamlit Cloud (Linux) ffmpeg is
+# installed via packages.txt and already on PATH, so this path won't exist
+# there and we simply skip overriding anything.
 FFMPEG_BIN = r"C:\Users\Hp\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.2-full_build\bin"
+USE_LOCAL_FFMPEG = os.path.isdir(FFMPEG_BIN)
 
-# Tell pydub exactly where ffmpeg/ffprobe are, without needing Windows PATH
-AudioSegment.converter = os.path.join(FFMPEG_BIN, "ffmpeg.exe")
-AudioSegment.ffprobe = os.path.join(FFMPEG_BIN, "ffprobe.exe")
+if USE_LOCAL_FFMPEG:
+    AudioSegment.converter = os.path.join(FFMPEG_BIN, "ffmpeg.exe")
+    AudioSegment.ffprobe = os.path.join(FFMPEG_BIN, "ffprobe.exe")
 
 
 def download_youtube_audio(url: str) -> str:
@@ -29,8 +33,16 @@ def download_youtube_audio(url: str) -> str:
         "fragment_retries": 10,
         "file_access_retries": 10,
         "overwrites": True,
-        "ffmpeg_location": FFMPEG_BIN,
+        # Try pretending to be the Android client — often avoids the
+        # 403 Forbidden block that datacenter IPs (like cloud hosts) hit.
+        "extractor_args": {"youtube": {"player_client": ["android"]}},
     }
+
+    # Only force a specific ffmpeg path locally on Windows; on Linux
+    # (Streamlit Cloud/Render) let yt-dlp find ffmpeg on PATH instead.
+    if USE_LOCAL_FFMPEG:
+        ydl_opts["ffmpeg_location"] = FFMPEG_BIN
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         base, _ = os.path.splitext(ydl.prepare_filename(info))
