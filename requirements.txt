@@ -1,40 +1,49 @@
-# Audio / Video
-yt-dlp
-pydub>=0.25.1
-ffmpeg-python>=0.2.0
+# ── AI Meeting Assistant ── requirements.txt ──────────────────────────────────
+# Deploy with Python 3.11 (set via Streamlit Cloud "Advanced settings" dropdown
+# at deploy time — runtime.txt is currently ignored due to a platform bug)
 
-# Translation
-deep-translator>=1.11.4
+# CPU-only PyTorch + torchvision builds — much smaller than the default
+# CUDA-enabled wheels, which matters on memory-limited free hosting tiers.
+--extra-index-url https://download.pytorch.org/whl/cpu
 
-# LangChain + Mistral
+# ── Audio / Video acquisition ─────────────────────────────────────────────────
+yt-dlp                              # Download audio from YouTube URLs
+pydub>=0.25.1                       # Audio file manipulation / format conversion
+ffmpeg-python>=0.2.0                # FFmpeg bindings (FFmpeg binary installed via packages.txt)
+
+# ── Translation (Hindi → English) ─────────────────────────────────────────────
+deep-translator>=1.11.4             # Lightweight translation wrapper (Google backend)
+
+# ── LLM Orchestration — LangChain LCEL + Mistral ──────────────────────────────
 langchain>=0.2.0
 langchain-core>=0.2.0
 langchain-community>=0.2.0
-langchain-mistralai>=0.1.0
-mistralai>=0.4.0
+langchain-mistralai>=0.1.0          # LangChain wrapper for Mistral API
+mistralai>=0.4.0                    # Official Mistral Python client
 
-# RAG
-chromadb>=0.5.0
-langchain-huggingface==0.0.3
-sentence-transformers==2.7.0
+# ── RAG Pipeline ──────────────────────────────────────────────────────────────
+chromadb>=0.5.0                     # Local vector store
+sentence-transformers==2.7.0        # HuggingFace embedding models
 transformers==4.41.2
 torch==2.3.1
 torchvision==0.18.1
-huggingface-hub>=0.23.0
-tiktoken>=0.7.0
+langchain-huggingface==0.0.3        # LangChain ↔ HuggingFace embeddings bridge
+huggingface-hub>=0.23.0             # Model downloading from HuggingFace Hub
+tiktoken>=0.7.0                     # Token counting for text splitting
 
-# Streamlit
+# ── Streamlit UI ──────────────────────────────────────────────────────────────
 streamlit>=1.35.0
-streamlit-extras>=0.4.0
-watchdog>=4.0.0
+streamlit-extras>=0.4.0             # Additional Streamlit widgets / utilities
+watchdog>=4.0.0                     # File-change watcher (improves Streamlit hot-reload)
 
-# PDF Export
-reportlab>=4.2.0
-fpdf2>=2.7.9
+# ── PDF & TXT Export ────────────────────────────────────────────────────────
+reportlab>=4.2.0                    # PDF generation
+fpdf2>=2.7.9                        # Lightweight alternative PDF library
 
-# Utilities
-python-dotenv>=1.0.0
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0                # Load API keys from .env
 numpy>=1.26.0
-tqdm>=4.66.0
+tqdm>=4.66.0                        # Progress bars
 requests>=2.32.0
-audioop-lts
+# audioop-lts NOT needed on Python 3.11 — audioop is still built into the
+# standard library here (only removed in Python 3.13+)
