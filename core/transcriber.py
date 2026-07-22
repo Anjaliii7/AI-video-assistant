@@ -1,12 +1,4 @@
 import os
-
-# Whisper calls ffmpeg internally via subprocess (not through pydub), so it
-# needs ffmpeg on the process PATH. Add it here before whisper is used.
-FFMPEG_BIN = r"C:\Users\Hp\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.2-full_build\bin"
-if FFMPEG_BIN not in os.environ["PATH"]:
-    os.environ["PATH"] += os.pathsep + FFMPEG_BIN
-
-import whisper
 import requests
 from pydub import AudioSegment
 
@@ -14,34 +6,46 @@ from pydub import AudioSegment
 # We slice each chunk into 25s pieces (with a 5s safety margin) before sending.
 SARVAM_PIECE_SECONDS = 25
 
-
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "tiny")
-
-
 SARVAM_API_KEY = os.getenv("SARVAM_API_KEY")
 SARVAM_STT_TRANSLATE_URL = "https://api.sarvam.ai/speech-to-text-translate"
 SARVAM_MODEL = os.getenv("SARVAM_STT_MODEL", "saaras:v2.5")
 
-_model = None
-
-
-def load_model():
-
-    global _model  
-
-    if _model is None: 
-        print(f"Loading Whisper model: {WHISPER_MODEL} ...")
-        _model = whisper.load_model(WHISPER_MODEL) 
-        print("Whisper model loaded.")
-    return _model 
+# ── Groq Whisper API (replaces local openai-whisper + torch) ──────────────────
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_TRANSCRIPTION_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+GROQ_WHISPER_MODEL = os.getenv("GROQ_WHISPER_MODEL", "whisper-large-v3-turbo")
 
 
 def transcribe_chunk_whisper(chunk_path: str) -> str:
+    """
+    Sends one audio chunk to Groq's hosted Whisper API and returns the
+    transcript text. No local model, no torch — lightweight for deployment.
+    """
+    if not GROQ_API_KEY:
+        raise RuntimeError("GROQ_API_KEY is not set in environment / .env")
 
-    model = load_model()  
+    headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
 
-    result = model.transcribe(chunk_path, task="transcribe")  
-    return result["text"]  
+    with open(chunk_path, "rb") as f:
+        files = {"file": (os.path.basename(chunk_path), f, "audio/wav")}
+        data = {
+            "model": GROQ_WHISPER_MODEL,
+            "response_format": "json",
+        }
+        response = requests.post(
+            GROQ_TRANSCRIPTION_URL,
+            headers=headers,
+            files=files,
+            data=data,
+            timeout=120,
+        )
+
+    if not response.ok:
+        print(f"\nGroq returned {response.status_code}")
+        print(f"Response body: {response.text}\n")
+        response.raise_for_status()
+
+    return response.json().get("text", "")
 
 
 def _send_to_sarvam(piece_path: str) -> str:
@@ -98,8 +102,8 @@ def transcribe_chunk_sarvam(chunk_path: str) -> str:
 
 def transcribe_chunk(chunk_path: str, language: str = "english") -> str:
     """
-    Route one chunk to Whisper or Sarvam depending on language choice.
-    - english  -> Whisper (local model)
+    Route one chunk to Groq Whisper or Sarvam depending on language choice.
+    - english  -> Groq Whisper API
     - hinglish -> Sarvam (translates to English while transcribing)
     """
     if language.lower() == "hinglish":
@@ -109,18 +113,18 @@ def transcribe_chunk(chunk_path: str, language: str = "english") -> str:
 
 def transcribe_all(chunks: list, language: str = "english") -> str:
 
-    full_transcript = "" 
+    full_transcript = ""
 
-    engine = "Sarvam AI" if language.lower() == "hinglish" else "Whisper"
+    engine = "Sarvam AI" if language.lower() == "hinglish" else "Groq Whisper API"
     print(f"Using {engine} for transcription.")
 
-    for i, chunk in enumerate(chunks):  
+    for i, chunk in enumerate(chunks):
 
         print(f"Transcribing chunk {i + 1}/{len(chunks)}...")
 
-        text = transcribe_chunk(chunk, language=language)  
+        text = transcribe_chunk(chunk, language=language)
 
-        full_transcript += text + " "  
+        full_transcript += text + " "
 
     print("Transcription complete.")
 
