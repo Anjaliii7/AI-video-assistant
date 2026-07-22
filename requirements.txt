@@ -1,64 +1,57 @@
-# ── AI Meeting Assistant ── requirements.txt ──────────────────────────────────
-# Python >= 3.10 recommended
+import os 
+from langchain_community.vectorstores import Chroma 
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
 
-# CPU-only PyTorch + torchvision builds — much smaller than the default
-# CUDA-enabled wheels, which matters on memory-limited free hosting tiers.
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.2.2
-torchvision==0.17.2
+CHROMA_DIR = "vector_db"
+COLLECTION_NAME = "meeting_transcript"
+EMBEDDING_MODEL  = "all-MiniLM-L6-v2"
 
-# ── Audio / Video acquisition ─────────────────────────────────────────────────
-yt-dlp                             # Download audio from YouTube URLs
-pydub>=0.25.1                      # Audio file manipulation / format conversion
-ffmpeg-python>=0.2.0               # FFmpeg bindings (FFmpeg binary installed via packages.txt)
+def get_embeddings():
+    return HuggingFaceEmbeddings(
+        model_name = EMBEDDING_MODEL,
+        model_kwargs = {"device" : 'cpu'}
+    )
 
-# ── Translation (Hindi → English) ─────────────────────────────────────────────
-deep-translator>=1.11.4            # Lightweight translation wrapper (Google backend)
+def build_vector_store(transcript : str)->Chroma:
+    print("Building vector Store")
 
-# ── LLM Orchestration — LangChain LCEL + Mistral ──────────────────────────────
-langchain>=0.2.0
-langchain-core>=0.2.0
-langchain-community>=0.2.0
-langchain-mistralai>=0.1.0         # LangChain wrapper for Mistral API
-mistralai>=0.4.0                   # Official Mistral Python client
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size = 500,
+        chunk_overlap = 50
+    )
+    chunks = splitter.split_text(transcript)
 
-# ── RAG Pipeline ──────────────────────────────────────────────────────────────
-chromadb>=0.5.0                    # Local vector store
-sentence-transformers>=3.0.0       # HuggingFace embedding models
-langchain-huggingface>=0.0.3       # LangChain ↔ HuggingFace embeddings bridge
-huggingface-hub>=0.23.0            # Model downloading from HuggingFace Hub
-tiktoken>=0.7.0                    # Token counting for text splitting
-transformers>=4.40.0,<4.45.0       # Compatible range with sentence-transformers + torch above
+    docs = [
+        Document(page_content=chunk, metadata = {'chunk_index' : i})
+        for i,chunk in enumerate(chunks)
+    ]
 
-# ── Streamlit UI ──────────────────────────────────────────────────────────────
-streamlit>=1.35.0
-streamlit-extras>=0.4.0            # Additional Streamlit widgets / utilities
-watchdog>=4.0.0                    # File-change watcher (improves Streamlit hot-reload)
+    embeddings = get_embeddings()
+    vector_store = Chroma.from_documents(
+        documents= docs,
+        embedding=embeddings,
+        collection_name=COLLECTION_NAME,
+        persist_directory=CHROMA_DIR
+    )
 
-# ── PDF & TXT Export ────────────────────────────────────────────────────────
-reportlab>=4.2.0                   # PDF generation
-fpdf2>=2.7.9                       # Lightweight alternative PDF library
-
-# ── Utilities ─────────────────────────────────────────────────────────────────
-python-dotenv>=1.0.0               # Load API keys from .env
-numpy>=1.26.0
-tqdm>=4.66.0                       # Progress bars
-requests>=2.32.0
-audioop-lts                        # Python 3.13+ compatibility shim for pydub
+    return vector_store
 
 
-# ── Streamlit UI ──────────────────────────────────────────────────────────────
-streamlit>=1.35.0
-streamlit-extras>=0.4.0            # Additional Streamlit widgets / utilities
-watchdog>=4.0.0                    # File-change watcher (improves Streamlit hot-reload)
 
-# ── PDF & TXT Export ────────────────────────────────────────────────────────��─
-reportlab>=4.2.0                   # PDF generation
-fpdf2>=2.7.9                       # Lightweight alternative PDF library
+def load_vector_store() ->Chroma:
+    embeddings = get_embeddings()
+    vector_store = Chroma(
+        collection_name=COLLECTION_NAME,
+        embedding_function= embeddings,
+        persist_directory=CHROMA_DIR
+    )
 
-# ── Utilities ─────────────────────────────────────────────────────────────────
-python-dotenv>=1.0.0               # Load API keys from .env
-numpy>=1.26.0
-tqdm>=4.66.0                       # Progress bars
-requests>=2.32.0
-audioop-lts                        # Python 3.13+ compatibility shim for pydub
+    return vector_store
+
+def get_retriever(vector_store : Chroma, k :int = 4):
+    return vector_store.as_retriever(
+        search_type = 'similarity',
+        search_kwargs = {"k":k}
+    )
