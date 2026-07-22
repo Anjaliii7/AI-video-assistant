@@ -1,57 +1,40 @@
-import os 
-from langchain_community.vectorstores import Chroma 
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
+# Audio / Video
+yt-dlp
+pydub>=0.25.1
+ffmpeg-python>=0.2.0
 
-CHROMA_DIR = "vector_db"
-COLLECTION_NAME = "meeting_transcript"
-EMBEDDING_MODEL  = "all-MiniLM-L6-v2"
+# Translation
+deep-translator>=1.11.4
 
-def get_embeddings():
-    return HuggingFaceEmbeddings(
-        model_name = EMBEDDING_MODEL,
-        model_kwargs = {"device" : 'cpu'}
-    )
+# LangChain + Mistral
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-community>=0.2.0
+langchain-mistralai>=0.1.0
+mistralai>=0.4.0
 
-def build_vector_store(transcript : str)->Chroma:
-    print("Building vector Store")
+# RAG
+chromadb>=0.5.0
+langchain-huggingface==0.0.3
+sentence-transformers==2.7.0
+transformers==4.41.2
+torch==2.3.1
+torchvision==0.18.1
+huggingface-hub>=0.23.0
+tiktoken>=0.7.0
 
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size = 500,
-        chunk_overlap = 50
-    )
-    chunks = splitter.split_text(transcript)
+# Streamlit
+streamlit>=1.35.0
+streamlit-extras>=0.4.0
+watchdog>=4.0.0
 
-    docs = [
-        Document(page_content=chunk, metadata = {'chunk_index' : i})
-        for i,chunk in enumerate(chunks)
-    ]
+# PDF Export
+reportlab>=4.2.0
+fpdf2>=2.7.9
 
-    embeddings = get_embeddings()
-    vector_store = Chroma.from_documents(
-        documents= docs,
-        embedding=embeddings,
-        collection_name=COLLECTION_NAME,
-        persist_directory=CHROMA_DIR
-    )
-
-    return vector_store
-
-
-
-def load_vector_store() ->Chroma:
-    embeddings = get_embeddings()
-    vector_store = Chroma(
-        collection_name=COLLECTION_NAME,
-        embedding_function= embeddings,
-        persist_directory=CHROMA_DIR
-    )
-
-    return vector_store
-
-def get_retriever(vector_store : Chroma, k :int = 4):
-    return vector_store.as_retriever(
-        search_type = 'similarity',
-        search_kwargs = {"k":k}
-    )
+# Utilities
+python-dotenv>=1.0.0
+numpy>=1.26.0
+tqdm>=4.66.0
+requests>=2.32.0
+audioop-lts
