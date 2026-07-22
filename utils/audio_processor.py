@@ -18,9 +18,21 @@ if USE_LOCAL_FFMPEG:
 
 def download_youtube_audio(url: str) -> str:
     output_path = os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s")
+    
     ydl_opts = {
-        "format": "bestaudio/best",
+        "format": "bestaudio[ext=m4a]/bestaudio/best",
         "outtmpl": output_path,
+        "quiet": True,
+        "noplaylist": True,
+        "retries": 10,
+        "fragment_retries": 10,
+        "file_access_retries": 10,
+        "overwrites": True,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["web", "android"]
+            }
+        },
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
@@ -28,16 +40,7 @@ def download_youtube_audio(url: str) -> str:
                 "preferredquality": "192",
             }
         ],
-        "quiet": True,
-        "retries": 10,
-        "fragment_retries": 10,
-        "file_access_retries": 10,
-        "overwrites": True,
-        # Try pretending to be the Android client — often avoids the
-        # 403 Forbidden block that datacenter IPs (like cloud hosts) hit.
-        "extractor_args": {"youtube": {"player_client": ["android"]}},
     }
-
     # Only force a specific ffmpeg path locally on Windows; on Linux
     # (Streamlit Cloud/Render) let yt-dlp find ffmpeg on PATH instead.
     if USE_LOCAL_FFMPEG:
