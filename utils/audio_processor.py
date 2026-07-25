@@ -15,24 +15,16 @@ if USE_LOCAL_FFMPEG:
     AudioSegment.converter = os.path.join(FFMPEG_BIN, "ffmpeg.exe")
     AudioSegment.ffprobe = os.path.join(FFMPEG_BIN, "ffprobe.exe")
 
+# Groq's Whisper API caps uploads at 25MB. 16kHz mono WAV runs about
+# 1.9 MB/minute, so keep chunks well under that ceiling.
+CHUNK_MINUTES = 8
+
 
 def download_youtube_audio(url: str) -> str:
     output_path = os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s")
-    
     ydl_opts = {
-        "format": "bestaudio[ext=m4a]/bestaudio/best",
+        "format": "bestaudio/best",
         "outtmpl": output_path,
-        "quiet": True,
-        "noplaylist": True,
-        "retries": 10,
-        "fragment_retries": 10,
-        "file_access_retries": 10,
-        "overwrites": True,
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["web", "android"]
-            }
-        },
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
@@ -40,9 +32,14 @@ def download_youtube_audio(url: str) -> str:
                 "preferredquality": "192",
             }
         ],
+        "quiet": True,
+        "retries": 10,
+        "fragment_retries": 10,
+        "file_access_retries": 10,
+        "overwrites": True,
+        "extractor_args": {"youtube": {"player_client": ["android"]}},
     }
-    # Only force a specific ffmpeg path locally on Windows; on Linux
-    # (Streamlit Cloud/Render) let yt-dlp find ffmpeg on PATH instead.
+
     if USE_LOCAL_FFMPEG:
         ydl_opts["ffmpeg_location"] = FFMPEG_BIN
 
@@ -53,16 +50,20 @@ def download_youtube_audio(url: str) -> str:
     return filename
 
 
-def convert_to_wav(input_path: str) -> str:
-    """Convert any audio/video file to WAV format using pydub."""
-    output_path = os.path.splitext(input_path)[0] + "_converted.wav"
+def normalize_audio(input_path: str) -> str:
+    """
+    Convert any audio/video file to 16kHz mono WAV — small enough to stay
+    comfortably under Groq's 25MB per-request limit once chunked, and the
+    right format for both Groq and Sarvam.
+    """
+    output_path = os.path.splitext(input_path)[0] + "_normalized.wav"
     audio = AudioSegment.from_file(input_path)
-    audio = audio.set_channels(1).set_frame_rate(16000)  # 16khz
+    audio = audio.set_channels(1).set_frame_rate(16000)
     audio.export(output_path, format="wav")
     return output_path
 
 
-def chunk_audio(wav_path: str, chunk_minutes: int = 10) -> list:
+def chunk_audio(wav_path: str, chunk_minutes: int = CHUNK_MINUTES) -> list:
     audio = AudioSegment.from_wav(wav_path)
     chunk_ms = chunk_minutes * 60 * 1000
 
@@ -81,10 +82,13 @@ def chunk_audio(wav_path: str, chunk_minutes: int = 10) -> list:
 def process_input(source: str) -> list:
     if source.startswith("http://") or source.startswith("https://"):
         print("Detected YouTube URL. Downloading audio...")
-        wav_path = download_youtube_audio(source)
+        raw_path = download_youtube_audio(source)
     else:
-        print("Detected local file. Converting to WAV...")
-        wav_path = convert_to_wav(source)
+        print("Detected local file.")
+        raw_path = source
+
+    print("Normalizing audio to 16kHz mono...")
+    wav_path = normalize_audio(raw_path)
 
     print("Chunking audio...")
     chunks = chunk_audio(wav_path)

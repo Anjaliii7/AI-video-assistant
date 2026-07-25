@@ -2,13 +2,24 @@ import streamlit as st
 import time
 import os
 from dotenv import load_dotenv
+load_dotenv()  # must run BEFORE importing core.transcriber, or API keys read at import time will be None
+
 from utils.audio_processor import process_input
 from core.transcriber import transcribe_all
 from core.summarizer import summarize, generate_title
 from core.extractor import extract_action_items, extract_key_decisions, extract_questions
 from core.rag_engine import build_rag_chain, ask_question
 
-load_dotenv()
+# On Streamlit Cloud, API keys live in st.secrets, not a local .env file.
+# Copy them into os.environ so existing os.getenv() calls throughout the
+# codebase (transcriber.py, summarizer.py, etc.) keep working unchanged.
+# Locally there's no secrets.toml (we use .env instead), so st.secrets
+# raises — just skip the bridge in that case.
+try:
+    for _key, _value in st.secrets.items():
+        os.environ[_key] = str(_value)
+except Exception:
+    pass
 
 # ─── Page Config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -339,28 +350,7 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown('<span class="badge badge-purple">Input</span>', unsafe_allow_html=True)
-
-    input_mode = st.radio(
-        "Source type",
-        ["Upload file", "YouTube URL"],
-        horizontal=True,
-        label_visibility="collapsed",
-    )
-
-    source = None
-    uploaded_file = None
-
-    if input_mode == "Upload file":
-        uploaded_file = st.file_uploader(
-            "Upload a video or audio file",
-            type=["mp4", "mov", "mkv", "webm", "mp3", "wav", "m4a"],
-        )
-    else:
-        source = st.text_input(
-            "YouTube URL",
-            placeholder="https://youtube.com/watch?v=...",
-        )
-        st.caption("Note: YouTube downloads may be blocked on the deployed app due to platform restrictions. Uploading a file is more reliable here.")
+    source = st.text_input("YouTube URL or File Path", placeholder="https://youtube.com/watch?v=... or /path/to/file.mp4")
 
     language = st.selectbox("Language", ["english", "hinglish"], index=0)
 
@@ -386,21 +376,9 @@ st.markdown("---")
 
 # ── Run Pipeline ────────────────────────────────────────────────────────────────
 if run_btn:
-    if input_mode == "Upload file" and uploaded_file is None:
-        st.error("Please upload a video or audio file.")
-    elif input_mode == "YouTube URL" and not (source and source.strip()):
-        st.error("Please enter a YouTube URL.")
+    if not source.strip():
+        st.error("Please enter a YouTube URL or file path.")
     else:
-        # Resolve the actual source path/URL to pass into process_input()
-        if input_mode == "Upload file":
-            os.makedirs("uploads", exist_ok=True)
-            local_path = os.path.join("uploads", uploaded_file.name)
-            with open(local_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            pipeline_source = local_path
-        else:
-            pipeline_source = source.strip()
-
         st.session_state.pipeline_done = False
         st.session_state.result = None
         st.session_state.chat_history = []
@@ -416,7 +394,7 @@ if run_btn:
                 st.info("⚙️ Pipeline running — see sidebar for live status…")
 
             update_step("audio", "active")
-            chunks = process_input(pipeline_source)
+            chunks = process_input(source)
             update_step("audio", "done")
 
             update_step("transcript", "active")
